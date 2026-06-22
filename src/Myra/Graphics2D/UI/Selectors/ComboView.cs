@@ -52,7 +52,14 @@ namespace Myra.Graphics2D.UI
 		/// </summary>
 		[Browsable(false)]
 		[XmlIgnore]
-		public bool IsExpanded => _button.IsPressed;
+		public bool IsExpanded => _button.IsPressed || (Desktop != null && Desktop.ContextMenu == _listView);
+
+		/// <summary>
+		/// Gets or sets a value indicating whether keyboard activation should move focus to the dropdown list when opened.
+		/// </summary>
+		[Category("Behavior")]
+		[DefaultValue(true)]
+		public bool FocusListOnOpen { get; set; } = true;
 
 		/// <summary>
 		/// Gets or sets the desktop that manages this combo view and its dropdown menu.
@@ -206,14 +213,96 @@ namespace Myra.Graphics2D.UI
 
 			if (_button.IsPressed)
 			{
-				if (_listView.SelectedIndex == null && Widgets.Count > 0)
+				ShowDropdown(FocusListOnOpen);
+			}
+		}
+
+		/// <summary>
+		/// Opens the dropdown list, optionally moving keyboard focus to the list.
+		/// </summary>
+		/// <param name="focusList">If true, keyboard focus is moved to the dropdown list.</param>
+		public void OpenDropdown(bool focusList = true)
+		{
+			if (_listView.Widgets.Count == 0)
+			{
+				return;
+			}
+
+			if (!_button.IsPressed)
+			{
+				_button.IsPressed = true;
+				if (!focusList)
 				{
-					_listView.SelectedIndex = 0;
+					return;
+				}
+			}
+
+			ShowDropdown(focusList);
+		}
+
+		/// <summary>
+		/// Closes the dropdown list if it is open.
+		/// </summary>
+		public void CloseDropdown()
+		{
+			if (Desktop != null && Desktop.ContextMenu == _listView)
+			{
+				Desktop.HideContextMenu();
+			}
+
+			_button.IsPressed = false;
+		}
+
+		/// <summary>
+		/// Toggles the dropdown list open or closed.
+		/// </summary>
+		/// <param name="focusList">If opening and true, keyboard focus is moved to the dropdown list.</param>
+		public void ToggleDropdown(bool focusList = true)
+		{
+			if (IsExpanded)
+			{
+				CloseDropdown();
+			}
+			else
+			{
+				OpenDropdown(focusList);
+			}
+		}
+
+		private void ShowDropdown(bool focusList)
+		{
+			if (Desktop == null || _listView.Widgets.Count == 0)
+			{
+				return;
+			}
+
+			if (_listView.SelectedIndex == null && Widgets.Count > 0)
+			{
+				_listView.SelectedIndex = 0;
+			}
+
+			var width = BorderBounds.Width;
+			var height = Bounds.Height;
+			if (width <= 0 || height <= 0)
+			{
+				var measured = Measure(new Point(10000, 10000));
+				if (width <= 0)
+				{
+					width = measured.X;
 				}
 
-				_listView.Width = BorderBounds.Width;
-				var pos = ToGlobal(new Point(0, Bounds.Height));
-				Desktop.ShowContextMenu(_listView, pos);
+				if (height <= 0)
+				{
+					height = measured.Y;
+				}
+			}
+
+			_listView.Width = width;
+			var pos = ToGlobal(new Point(0, height));
+			Desktop.ShowContextMenu(_listView, pos);
+			if (focusList)
+			{
+				_listView.SetKeyboardFocus();
 			}
 		}
 
@@ -299,6 +388,18 @@ namespace Myra.Graphics2D.UI
 		public override void OnKeyDown(Keys k)
 		{
 			base.OnKeyDown(k);
+
+			if ((k == Keys.Enter || k == Keys.Space) && !IsExpanded)
+			{
+				OpenDropdown(FocusListOnOpen);
+				return;
+			}
+
+			if (k == Keys.Escape && IsExpanded)
+			{
+				CloseDropdown();
+				return;
+			}
 
 			_listView.OnKeyDown(k);
 		}

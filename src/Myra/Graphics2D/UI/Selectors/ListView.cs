@@ -218,6 +218,7 @@ namespace Myra.Graphics2D.UI
 				var button = new ListViewButton()
 				{
 					Content = w,
+					ListView = _listView,
 					HorizontalAlignment = HorizontalAlignment.Stretch
 				};
 
@@ -348,6 +349,11 @@ namespace Myra.Graphics2D.UI
 					return;
 				}
 
+				if (SelectionMode == SelectionMode.Single)
+				{
+					ClearPressedItems();
+				}
+
 				_selectedItem = value;
 
 				if (_selectedItem != null)
@@ -361,6 +367,17 @@ namespace Myra.Graphics2D.UI
 
 				SelectedIndexChanged.Invoke(this, InputEventType.SelectedIndexChanged);
 				OnSelectedItemChanged();
+			}
+		}
+
+		private void ClearPressedItems()
+		{
+			foreach (var widget in _box.Widgets)
+			{
+				if (widget is ListViewButton button)
+				{
+					button.IsPressed = false;
+				}
 			}
 		}
 
@@ -405,11 +422,11 @@ namespace Myra.Graphics2D.UI
 		private void ButtonOnClick(object sender, MyraEventArgs eventArgs)
 		{
 			var button = (ListViewButton)sender;
-			if (!button.IsPressed)
-			{
-				return;
-			}
+			SelectButton(button);
+		}
 
+		internal void SelectButton(ListViewButton button)
+		{
 			if (SelectionMode == SelectionMode.Single)
 			{
 				SelectedItem = button.Content;

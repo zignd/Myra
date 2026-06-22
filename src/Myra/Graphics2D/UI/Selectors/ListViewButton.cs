@@ -2,6 +2,7 @@
 {
 	internal class ListViewButton : ToggleButton
 	{
+		public ListView ListView { get; set; }
 		public Widget ButtonsContainer { get; set; }
 		public Widget TopParent => ButtonsContainer ?? Parent;
 
@@ -83,6 +84,16 @@
 				}
 
 				asListViewButton.IsPressed = false;
+			}
+		}
+
+		public override void OnTouchDown()
+		{
+			base.OnTouchDown();
+
+			if (IsPressed)
+			{
+				ListView?.SelectButton(this);
 			}
 		}
 	}

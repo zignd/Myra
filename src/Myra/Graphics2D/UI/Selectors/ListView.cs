@@ -346,6 +346,7 @@ namespace Myra.Graphics2D.UI
 			{
 				if (value == _selectedItem)
 				{
+					EnsureSelectedButtonPressed();
 					return;
 				}
 
@@ -358,15 +359,31 @@ namespace Myra.Graphics2D.UI
 
 				if (_selectedItem != null)
 				{
-					var asButton = _selectedItem.Parent as ListViewButton;
-					if (asButton != null)
-					{
-						asButton.IsPressed = true;
-					}
+					EnsureSelectedButtonPressed();
 				}
 
 				SelectedIndexChanged.Invoke(this, InputEventType.SelectedIndexChanged);
 				OnSelectedItemChanged();
+			}
+		}
+
+		private void EnsureSelectedButtonPressed()
+		{
+			if (_selectedItem == null)
+			{
+				return;
+			}
+
+			var selectedButton = _selectedItem.Parent as ListViewButton;
+			var selectedIndex = SelectedIndex;
+			if (selectedButton == null && selectedIndex.HasValue)
+			{
+				selectedButton = _box.Widgets[selectedIndex.Value] as ListViewButton;
+			}
+
+			if (selectedButton != null)
+			{
+				selectedButton.IsPressed = true;
 			}
 		}
 
@@ -382,6 +399,25 @@ namespace Myra.Graphics2D.UI
 		}
 
 		private int ChildrenCount => _box.Children.Count;
+
+		/// <summary>
+		/// Ensures keyboard focus entering the list has a visible selected item.
+		/// </summary>
+		public override void OnGotKeyboardFocus()
+		{
+			base.OnGotKeyboardFocus();
+
+			if (SelectedIndex == null && Widgets.Count > 0)
+			{
+				SelectedIndex = 0;
+			}
+			else
+			{
+				EnsureSelectedButtonPressed();
+			}
+
+			UpdateScrolling();
+		}
 
 		/// <summary>
 		/// Occurs when the selected item changes.
@@ -533,11 +569,11 @@ namespace Myra.Graphics2D.UI
 			var widget = SelectedItem;
 			var p = _box.ToLocal(widget.ToGlobal(widget.Bounds.Location));
 
-			var lineHeight = widget.ActualBounds.Height;
+			var lineHeight = widget.Bounds.Height;
 
 			var sp = _scrollViewer.ScrollPosition;
 
-			var sz = new Point(_scrollViewer.Bounds.Width, _scrollViewer.Bounds.Height);
+			var sz = _scrollViewer.ActualBounds.Size();
 			if (p.Y < sp.Y)
 			{
 				sp.Y = p.Y;
@@ -545,6 +581,16 @@ namespace Myra.Graphics2D.UI
 			else if (p.Y + lineHeight > sp.Y + sz.Y)
 			{
 				sp.Y = p.Y + lineHeight - sz.Y;
+			}
+
+			var maximum = _scrollViewer.ScrollMaximum;
+			if (sp.Y < 0)
+			{
+				sp.Y = 0;
+			}
+			else if (sp.Y > maximum.Y)
+			{
+				sp.Y = maximum.Y;
 			}
 
 			_scrollViewer.ScrollPosition = sp;

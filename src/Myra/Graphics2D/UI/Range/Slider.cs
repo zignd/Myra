@@ -157,9 +157,11 @@ namespace Myra.Graphics2D.UI
 		{
 			get
 			{
-				return Orientation == Orientation.Horizontal
-					? Bounds.Width - ImageButton.Bounds.Width - Margin.Width
-					: Bounds.Height - ImageButton.Bounds.Height - Margin.Height;
+				var track = ActualBounds;
+				var result = Orientation == Orientation.Horizontal
+					? track.Width - ImageButton.Bounds.Width
+					: track.Height - ImageButton.Bounds.Height;
+				return result < 0 ? 0 : result;
 			}
 		}
 
@@ -247,7 +249,10 @@ namespace Myra.Graphics2D.UI
 			var pos = ToLocal(Desktop.TouchPosition.Value);
 
 			var bounds = ImageButton.ActualBounds;
-			return Orientation == Orientation.Horizontal ? pos.X - bounds.Width / 2 - Margin.Left : pos.Y - bounds.Height / 2 - Margin.Top;
+			var track = ActualBounds;
+			return Orientation == Orientation.Horizontal
+				? pos.X - track.Left - bounds.Width / 2
+				: pos.Y - track.Top - bounds.Height / 2;
 		}
 
 		/// <summary>

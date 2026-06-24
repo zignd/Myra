@@ -32,6 +32,8 @@ namespace Myra.Graphics2D.UI
 		internal Rectangle _verticalScrollbarFrame, _verticalScrollbarThumb;
 		private int? _startBoundsPos;
 		private int _thumbMaximumX, _thumbMaximumY;
+		private Point _targetScrollPosition;
+		private bool _smoothScrollActive;
 
 		[Browsable(false)]
 		[XmlIgnore]
@@ -161,11 +163,11 @@ namespace Myra.Graphics2D.UI
 		}
 
 		/// <summary>
-		/// Gets or sets the multiplier for mouse wheel scrolling speed.
+		/// Gets or sets the multiplier applied to the platform-provided mouse wheel delta.
 		/// </summary>
 		[Category("Appearance")]
-		[DefaultValue(10)]
-		public int ScrollMultiplier { get; set; } = 10;
+		[DefaultValue(1)]
+		public int ScrollMultiplier { get; set; } = 1;
 
 		/// <summary>
 		/// Gets or sets the widget to display in the scroll viewer.
@@ -417,6 +419,60 @@ namespace Myra.Graphics2D.UI
 			}
 
 			ScrollPosition = scrollPosition;
+			_targetScrollPosition = scrollPosition;
+			_smoothScrollActive = false;
+		}
+
+		private static int Approach(int current, int target)
+		{
+			var delta = target - current;
+			if (Math.Abs(delta) <= 1)
+			{
+				return target;
+			}
+
+			return current + (int)Math.Round(delta * 0.35);
+		}
+
+		private Point ClampScrollPosition(Point scrollPosition)
+		{
+			var maximum = ScrollMaximum;
+			if (scrollPosition.X < 0)
+			{
+				scrollPosition.X = 0;
+			}
+			else if (scrollPosition.X > maximum.X)
+			{
+				scrollPosition.X = maximum.X;
+			}
+
+			if (scrollPosition.Y < 0)
+			{
+				scrollPosition.Y = 0;
+			}
+			else if (scrollPosition.Y > maximum.Y)
+			{
+				scrollPosition.Y = maximum.Y;
+			}
+
+			return scrollPosition;
+		}
+
+		private void UpdateSmoothScroll()
+		{
+			if (!_smoothScrollActive)
+			{
+				return;
+			}
+
+			_targetScrollPosition = ClampScrollPosition(_targetScrollPosition);
+			var current = ScrollPosition;
+			var next = new Point(
+				Approach(current.X, _targetScrollPosition.X),
+				Approach(current.Y, _targetScrollPosition.Y));
+
+			ScrollPosition = next;
+			_smoothScrollActive = next != _targetScrollPosition;
 		}
 
 		/// <summary>
@@ -474,17 +530,17 @@ namespace Myra.Graphics2D.UI
 				return;
 			}
 
-			var step = ScrollMultiplier * ScrollMaximum.Y / _thumbMaximumY;
-			if (delta < 0)
+
+			var step = (int)Math.Round(-delta * ScrollMultiplier);
+			if (step == 0)
 			{
-				_scrollbarOrientation = Orientation.Vertical;
-				MoveThumb(step);
+				step = delta < 0 ? 1 : -1;
 			}
-			else if (delta > 0)
-			{
-				_scrollbarOrientation = Orientation.Vertical;
-				MoveThumb(-step);
-			}
+
+			var target = _smoothScrollActive ? _targetScrollPosition : ScrollPosition;
+			target.Y += step;
+			_targetScrollPosition = ClampScrollPosition(target);
+			_smoothScrollActive = true;
 		}
 
 		/// <summary>
@@ -499,6 +555,7 @@ namespace Myra.Graphics2D.UI
 			}
 
 			// Render child
+			UpdateSmoothScroll();
 			base.InternalRender(context);
 
 			var thumbPosition = ThumbPosition;

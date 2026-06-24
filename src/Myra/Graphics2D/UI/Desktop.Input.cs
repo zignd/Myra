@@ -382,6 +382,38 @@ namespace Myra.Graphics2D.UI
 			}
 		}
 
+		/// <summary>
+		/// Injects a mouse-wheel event at a specific desktop position and dispatches it through
+		/// the same hit-testing path used by <see cref="Render"/>.
+		/// </summary>
+		public void InjectMouseWheel(Point position, float delta)
+		{
+			UpdateLayout();
+
+			PreviousMousePosition = MousePosition;
+			PreviousTouchPosition = TouchPosition;
+			MousePosition = position;
+			TouchPosition = null;
+			MouseWheelDelta = delta;
+
+			_inputContext.Reset();
+			var childrenCopy = ChildrenCopy;
+			for (var i = childrenCopy.Count - 1; i >= 0; --i)
+			{
+				var widget = childrenCopy[i];
+				widget.ProcessInput(_inputContext);
+			}
+
+			if (_inputContext.MouseWheelWidget != null)
+			{
+				InputEventsManager.Queue(_inputContext.MouseWheelWidget, InputEventType.MouseWheel);
+			}
+
+			InputEventsManager.ProcessEvents();
+			MouseWheelDelta = 0;
+			UpdateLayout();
+		}
+
 		void IInputEventsProcessor.ProcessEvent(InputEventType eventType)
 		{
 			switch (eventType)

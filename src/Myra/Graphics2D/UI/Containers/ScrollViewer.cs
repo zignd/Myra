@@ -107,6 +107,31 @@ namespace Myra.Graphics2D.UI
 			}
 		}
 
+		/// <summary>
+		/// Gets the smooth-scroll target position, or the current position when smoothing is inactive.
+		/// </summary>
+		[Browsable(false)]
+		[XmlIgnore]
+		public Point TargetScrollPosition => _smoothScrollActive ? _targetScrollPosition : ScrollPosition;
+
+		/// <summary>
+		/// Gets whether smooth scrolling is currently animating toward <see cref="TargetScrollPosition"/>.
+		/// </summary>
+		[Browsable(false)]
+		[XmlIgnore]
+		public bool SmoothScrollActive => _smoothScrollActive;
+
+		/// <summary>
+		/// Sets the scroll position immediately and cancels any active smooth-scroll target.
+		/// </summary>
+		/// <param name="scrollPosition">The desired scroll position.</param>
+		public void JumpToScrollPosition(Point scrollPosition)
+		{
+			ScrollPosition = ClampScrollPosition(scrollPosition);
+			_targetScrollPosition = ScrollPosition;
+			_smoothScrollActive = false;
+		}
+
 		internal Point ThumbPosition
 		{
 			get
@@ -506,11 +531,10 @@ namespace Myra.Graphics2D.UI
 			}
 
 
-			var step = (int)Math.Round(-delta * ScrollMultiplier);
-			if (step == 0)
-			{
-				step = delta < 0 ? 1 : -1;
-			}
+			var viewportStep = Math.Max(1, ActualBounds.Height / 3);
+			var wheelUnits = Math.Max(1f, Math.Abs(delta) / 120f);
+			var direction = delta < 0 ? 1 : -1;
+			var step = (int)Math.Round(direction * wheelUnits * viewportStep * ScrollMultiplier);
 
 			var target = _smoothScrollActive ? _targetScrollPosition : ScrollPosition;
 			target.Y += step;

@@ -8,22 +8,22 @@
 		/// <summary>
 		/// Gets or sets the image used for the horizontal scrollbar background.
 		/// </summary>
-		public IImage HorizontalScrollBackground { get; set; }
+		public IBrush HorizontalScrollBackground { get; set; }
 
 		/// <summary>
 		/// Gets or sets the image used for the horizontal scrollbar thumb (draggable knob).
 		/// </summary>
-		public IImage HorizontalScrollKnob { get; set; }
+		public IBrush HorizontalScrollKnob { get; set; }
 
 		/// <summary>
 		/// Gets or sets the image used for the vertical scrollbar background.
 		/// </summary>
-		public IImage VerticalScrollBackground { get; set; }
+		public IBrush VerticalScrollBackground { get; set; }
 
 		/// <summary>
 		/// Gets or sets the image used for the vertical scrollbar thumb (draggable knob).
 		/// </summary>
-		public IImage VerticalScrollKnob { get; set; }
+		public IBrush VerticalScrollKnob { get; set; }
 
 		/// <summary>
 		/// Initializes a new instance of the <see cref="ScrollViewerStyle"/> class.

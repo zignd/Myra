@@ -34,6 +34,9 @@ namespace Myra.Graphics2D.UI
 		private int _thumbMaximumX, _thumbMaximumY;
 		private Point _targetScrollPosition;
 		private bool _smoothScrollActive;
+		private const int ScrollbarInset = 1;
+        private const int DefaultScrollbarThickness = 8;
+        private const int DefaultScrollbarThumbLength = 24;
 
 		[Browsable(false)]
 		[XmlIgnore]
@@ -130,7 +133,7 @@ namespace Myra.Graphics2D.UI
 		/// Gets or sets the image used for the horizontal scrollbar background.
 		/// </summary>
 		[Category("Appearance")]
-		public IImage HorizontalScrollBackground
+		public IBrush HorizontalScrollBackground
 		{
 			get; set;
 		}
@@ -139,7 +142,7 @@ namespace Myra.Graphics2D.UI
 		/// Gets or sets the image used for the horizontal scrollbar knob (thumb).
 		/// </summary>
 		[Category("Appearance")]
-		public IImage HorizontalScrollKnob
+		public IBrush HorizontalScrollKnob
 		{
 			get; set;
 		}
@@ -148,7 +151,7 @@ namespace Myra.Graphics2D.UI
 		/// Gets or sets the image used for the vertical scrollbar background.
 		/// </summary>
 		[Category("Appearance")]
-		public IImage VerticalScrollBackground
+		public IBrush VerticalScrollBackground
 		{
 			get; set;
 		}
@@ -157,7 +160,7 @@ namespace Myra.Graphics2D.UI
 		/// Gets or sets the image used for the vertical scrollbar knob (thumb).
 		/// </summary>
 		[Category("Appearance")]
-		public IImage VerticalScrollKnob
+		public IBrush VerticalScrollKnob
 		{
 			get; set;
 		}
@@ -316,40 +319,12 @@ namespace Myra.Graphics2D.UI
 
 		private int HorizontalScrollbarHeight
 		{
-			get
-			{
-				var result = 0;
-				if (HorizontalScrollBackground != null)
-				{
-					result = HorizontalScrollBackground.Size.Y;
-				}
-
-				if (HorizontalScrollKnob != null && HorizontalScrollKnob.Size.Y > result)
-				{
-					result = HorizontalScrollKnob.Size.Y;
-				}
-
-				return result;
-			}
+			get { return DefaultScrollbarThickness; }
 		}
 
 		private int VerticalScrollbarWidth
 		{
-			get
-			{
-				var result = 0;
-				if (VerticalScrollBackground != null)
-				{
-					result = VerticalScrollBackground.Size.X;
-				}
-
-				if (VerticalScrollKnob != null && VerticalScrollKnob.Size.X > result)
-				{
-					result = VerticalScrollKnob.Size.X;
-				}
-
-				return result;
-			}
+			get { return DefaultScrollbarThickness; }
 		}
 
 		/// <summary>
@@ -561,27 +536,31 @@ namespace Myra.Graphics2D.UI
 			var thumbPosition = ThumbPosition;
 			if (_horizontalScrollingOn && ShowHorizontalScrollBar)
 			{
-				if (HorizontalScrollBackground != null)
-				{
-					HorizontalScrollBackground.Draw(context, _horizontalScrollbarFrame);
-				}
+				DrawBrush(context, HorizontalScrollBackground, _horizontalScrollbarFrame);
 
 				var r = _horizontalScrollbarThumb;
 				r.X += thumbPosition.X;
-				HorizontalScrollKnob.Draw(context, r);
+				DrawBrush(context, HorizontalScrollKnob, r);
 			}
 
 			if (_verticalScrollingOn && ShowVerticalScrollBar)
 			{
-				if (VerticalScrollBackground != null)
-				{
-					VerticalScrollBackground.Draw(context, _verticalScrollbarFrame);
-				}
+				DrawBrush(context, VerticalScrollBackground, _verticalScrollbarFrame);
 
 				var r = _verticalScrollbarThumb;
 				r.Y += thumbPosition.Y;
-				VerticalScrollKnob.Draw(context, r);
+				DrawBrush(context, VerticalScrollKnob, r);
 			}
+		}
+
+		private void DrawBrush(RenderContext context, IBrush brush, Rectangle destination)
+		{
+			if (brush == null || destination.Width <= 0 || destination.Height <= 0)
+			{
+				return;
+			}
+
+			brush.Draw(context, destination);
 		}
 
 		internal override IDictionary GetStylesDictionary(Stylesheet stylesheet) => stylesheet.ScrollViewerStyles;
@@ -687,10 +666,11 @@ namespace Myra.Graphics2D.UI
 				var bw = bounds.Width - (_verticalScrollingOn && ShowVerticalScrollBar ? vsWidth : 0);
 
 				// Position horizontal scrollbar frame at the bottom of the bounds
-				_horizontalScrollbarFrame = new Rectangle(bounds.Left,
-					bounds.Bottom - hsHeight,
-					bw,
-					hsHeight);
+				_horizontalScrollbarFrame = new Rectangle(
+					bounds.Left + ScrollbarInset,
+					bounds.Bottom - hsHeight + ScrollbarInset,
+					Math.Max(0, bw - (ScrollbarInset * 2)),
+					Math.Max(0, hsHeight - (ScrollbarInset * 2)));
 
 				// Calculate horizontal scrollbar thumb width to proportionally represent scrollable content
 				// Thumb size = (visible width / content width) * scrollbar width, with minimum knob size
@@ -700,20 +680,21 @@ namespace Myra.Graphics2D.UI
 					mw = 1;
 				}
 
-				_horizontalScrollbarThumb = new Rectangle(bounds.Left,
-					bounds.Bottom - hsHeight,
-					Math.Max(HorizontalScrollKnob.Size.X, bw * bw / mw),
-					HorizontalScrollKnob.Size.Y);
+				_horizontalScrollbarThumb = new Rectangle(
+					_horizontalScrollbarFrame.Left,
+					_horizontalScrollbarFrame.Top,
+					Math.Min(_horizontalScrollbarFrame.Width, Math.Max(DefaultScrollbarThumbLength, bw * bw / mw)),
+					_horizontalScrollbarFrame.Height);
 
 				// Available height for vertical scrollbar (reduced if horizontal scrollbar is shown)
 				var bh = bounds.Height - ((_horizontalScrollingOn && ShowHorizontalScrollBar) ? hsHeight : 0);
 
 				// Position vertical scrollbar frame on the right edge of the bounds
 				_verticalScrollbarFrame = new Rectangle(
-					bounds.Left + bounds.Width - vsWidth,
-					bounds.Top,
-					vsWidth,
-					bh);
+					bounds.Left + bounds.Width - vsWidth + ScrollbarInset,
+					bounds.Top + ScrollbarInset,
+					Math.Max(0, vsWidth - (ScrollbarInset * 2)),
+					Math.Max(0, bh - (ScrollbarInset * 2)));
 
 				// Calculate vertical scrollbar thumb height to proportionally represent scrollable content
 				// Thumb size = (visible height / content height) * scrollbar height, with minimum knob size
@@ -724,14 +705,14 @@ namespace Myra.Graphics2D.UI
 				}
 
 				_verticalScrollbarThumb = new Rectangle(
-					bounds.Left + bounds.Width - vsWidth,
-					bounds.Top,
-					VerticalScrollKnob.Size.X,
-					Math.Max(VerticalScrollKnob.Size.Y, bh * bh / mh));
+					_verticalScrollbarFrame.Left,
+					_verticalScrollbarFrame.Top,
+					_verticalScrollbarFrame.Width,
+					Math.Min(_verticalScrollbarFrame.Height, Math.Max(DefaultScrollbarThumbLength, bh * bh / mh)));
 
 				// Calculate maximum travel distance for scrollbar thumbs (range where thumb can slide)
-				_thumbMaximumX = bw - _horizontalScrollbarThumb.Width;
-				_thumbMaximumY = bh - _verticalScrollbarThumb.Height;
+				_thumbMaximumX = _horizontalScrollbarFrame.Width - _horizontalScrollbarThumb.Width;
+				_thumbMaximumY = _verticalScrollbarFrame.Height - _verticalScrollbarThumb.Height;
 
 				// Prevent division by zero when mapping scroll position to thumb position
 				if (_thumbMaximumX == 0)

@@ -62,6 +62,9 @@ namespace Myra.Graphics2D.UI
 		private string _hintText;  // Placeholder text shown when empty and unfocused
 		private bool _passwordField;
 		private bool _isTouchDown;
+		private bool _ignoreTouchDownUntilTouchUp;
+		private DateTime? _lastDoubleClick;
+		private Point _lastDoubleClickPosition;
 
 		// Undo/redo stacks for handling text modifications
 		private readonly UndoRedoStack UndoStack = new UndoRedoStack();
@@ -774,6 +777,180 @@ namespace Myra.Graphics2D.UI
 			}
 		}
 
+		private void MoveCursorTo(int newPosition)
+		{
+			UserSetCursorPosition(newPosition);
+			UpdateSelectionIfShiftDown();
+		}
+
+		private int FindWordBoundaryLeft(int position)
+		{
+			position = Math.Min(position, Length);
+			while (position > 0 && char.IsWhiteSpace(Text[position - 1]))
+			{
+				--position;
+			}
+
+			if (position == 0)
+			{
+				return 0;
+			}
+
+			var word = IsWordChar(Text[position - 1]);
+			while (position > 0 && !char.IsWhiteSpace(Text[position - 1]) && IsWordChar(Text[position - 1]) == word)
+			{
+				--position;
+			}
+
+			return position;
+		}
+
+		private int FindWordBoundaryRight(int position)
+		{
+			position = Math.Max(0, position);
+			while (position < Length && char.IsWhiteSpace(Text[position]))
+			{
+				++position;
+			}
+
+			if (position >= Length)
+			{
+				return Length;
+			}
+
+			var word = IsWordChar(Text[position]);
+			while (position < Length && !char.IsWhiteSpace(Text[position]) && IsWordChar(Text[position]) == word)
+			{
+				++position;
+			}
+
+			return position;
+		}
+
+		private int FindLineStart(int position)
+		{
+			position = Math.Min(Math.Max(position, 0), Length);
+			while (position > 0 && Text[position - 1] != '\n')
+			{
+				--position;
+			}
+
+			return position;
+		}
+
+		private int FindLineEnd(int position)
+		{
+			position = Math.Min(Math.Max(position, 0), Length);
+			while (position < Length && Text[position] != '\n')
+			{
+				++position;
+			}
+
+			return position;
+		}
+
+		private static bool IsWordChar(char ch)
+		{
+			return char.IsLetterOrDigit(ch) || ch == '_';
+		}
+
+		private void SelectWordAt(int position)
+		{
+			if (string.IsNullOrEmpty(Text) || Desktop.IsShiftDown)
+			{
+				return;
+			}
+
+			var charIndex = CharacterIndexNearInsertionPoint(position);
+			if (charIndex < 0 || char.IsWhiteSpace(Text[charIndex]))
+			{
+				return;
+			}
+
+			var word = IsWordChar(Text[charIndex]);
+			var start = charIndex;
+			while (start > 0 && !char.IsWhiteSpace(Text[start - 1]) && IsWordChar(Text[start - 1]) == word)
+			{
+				--start;
+			}
+
+			var end = charIndex + 1;
+			while (end < Text.Length && !char.IsWhiteSpace(Text[end]) && IsWordChar(Text[end]) == word)
+			{
+				++end;
+			}
+
+			if (start < end)
+			{
+				SelectStart = start;
+				SelectEnd = end;
+				UserSetCursorPosition(end);
+			}
+		}
+
+		private int CharacterIndexNearInsertionPoint(int position)
+		{
+			if (position <= 0)
+			{
+				return 0;
+			}
+
+			if (position >= Text.Length)
+			{
+				return Text.Length - 1;
+			}
+
+			var previous = Text[position - 1];
+			var current = Text[position];
+			if (!char.IsWhiteSpace(previous) &&
+				(char.IsWhiteSpace(current) || IsWordChar(previous) == IsWordChar(current)))
+			{
+				return position - 1;
+			}
+
+			return position;
+		}
+
+		private void SelectLineAt(int position)
+		{
+			if (string.IsNullOrEmpty(Text))
+			{
+				return;
+			}
+
+			if (position < 0)
+			{
+				position = 0;
+			}
+			else if (position > Text.Length)
+			{
+				position = Text.Length;
+			}
+			var start = position;
+			while (start > 0 && Text[start - 1] != '\n')
+			{
+				--start;
+			}
+
+			var end = position;
+			while (end < Text.Length && Text[end] != '\n')
+			{
+				++end;
+			}
+
+			SelectStart = start;
+			SelectEnd = end;
+			UserSetCursorPosition(end);
+		}
+
+		private bool IsDoubleClickContinuation(Point touchPosition)
+		{
+			return _lastDoubleClick != null &&
+				(DateTime.Now - _lastDoubleClick.Value).TotalMilliseconds < MyraEnvironment.DoubleClickIntervalInMs &&
+				Math.Abs(touchPosition.X - _lastDoubleClickPosition.X) <= MyraEnvironment.DoubleClickRadius &&
+				Math.Abs(touchPosition.Y - _lastDoubleClickPosition.Y) <= MyraEnvironment.DoubleClickRadius;
+		}
+
 		// Moves cursor up or down one line while maintaining horizontal position (preferredX)
 		private void MoveLine(int delta)
 		{
@@ -833,14 +1010,14 @@ namespace Myra.Graphics2D.UI
 			switch (k)
 			{
 				case Keys.C:
-					if (Desktop.IsControlDown)
+					if (Desktop.IsShortcutDown)
 					{
 						Copy();
 					}
 					break;
 
 				case Keys.V:
-					if (!Readonly && Desktop.IsControlDown)
+					if (!Readonly && Desktop.IsShortcutDown)
 					{
 						string clipboardText;
 						try
@@ -860,7 +1037,7 @@ namespace Myra.Graphics2D.UI
 					break;
 
 				case Keys.X:
-					if (Desktop.IsControlDown)
+					if (Desktop.IsShortcutDown)
 					{
 						Copy();
 						if (!Readonly && SelectStart != SelectEnd)
@@ -911,9 +1088,16 @@ namespace Myra.Graphics2D.UI
 					break;
 
 				case Keys.Z:
-					if (!Readonly && Desktop.IsControlDown)
+					if (!Readonly && Desktop.IsShortcutDown)
 					{
-						Undo();
+						if (Desktop.IsShiftDown)
+						{
+							Redo();
+						}
+						else
+						{
+							Undo();
+						}
 					}
 					break;
 
@@ -925,25 +1109,39 @@ namespace Myra.Graphics2D.UI
 					break;
 
 				case Keys.A:
-					if (Desktop.IsControlDown)
+					if (Desktop.IsShortcutDown)
 					{
 						SelectAll();
 					}
 					break;
 
 				case Keys.Left:
-					if (CursorPosition > 0)
+					if (Desktop.IsCommandDown)
 					{
-						UserSetCursorPosition(CursorPosition - 1);
-						UpdateSelectionIfShiftDown();
+						MoveCursorTo(FindLineStart(CursorPosition));
+					}
+					else if (Desktop.IsAltDown || Desktop.IsControlDown)
+					{
+						MoveCursorTo(FindWordBoundaryLeft(CursorPosition));
+					}
+					else if (CursorPosition > 0)
+					{
+						MoveCursorTo(CursorPosition - 1);
 					}
 					break;
 
 				case Keys.Right:
-					if (CursorPosition < Length)
+					if (Desktop.IsCommandDown)
 					{
-						UserSetCursorPosition(CursorPosition + 1);
-						UpdateSelectionIfShiftDown();
+						MoveCursorTo(FindLineEnd(CursorPosition));
+					}
+					else if (Desktop.IsAltDown || Desktop.IsControlDown)
+					{
+						MoveCursorTo(FindWordBoundaryRight(CursorPosition));
+					}
+					else if (CursorPosition < Length)
+					{
+						MoveCursorTo(CursorPosition + 1);
 					}
 					break;
 
@@ -992,16 +1190,7 @@ namespace Myra.Graphics2D.UI
 					{
 						if (!Desktop.IsControlDown && !string.IsNullOrEmpty(Text))
 						{
-							var newPosition = CursorPosition;
-
-							while (newPosition > 0 &&
-								(newPosition - 1 >= Text.Length ||
-								Text[newPosition - 1] != '\n'))
-							{
-								--newPosition;
-							}
-
-							UserSetCursorPosition(newPosition);
+							UserSetCursorPosition(FindLineStart(CursorPosition));
 						}
 						else
 						{
@@ -1017,14 +1206,7 @@ namespace Myra.Graphics2D.UI
 					{
 						if (!Desktop.IsControlDown)
 						{
-							var newPosition = CursorPosition;
-
-							while (newPosition < Length && Text[newPosition] != '\n')
-							{
-								++newPosition;
-							}
-
-							UserSetCursorPosition(newPosition);
+							UserSetCursorPosition(FindLineEnd(CursorPosition));
 						}
 						else
 						{
@@ -1367,9 +1549,10 @@ namespace Myra.Graphics2D.UI
 			}
 
 			var mousePos = ToLocal(Desktop.TouchPosition.Value);
-			// Account for internal scrolling offset
-			mousePos.X += _internalScrolling.X;
-			mousePos.Y += _internalScrolling.Y;
+			var textOrigin = TextOriginLocal();
+			// Convert from widget-local coordinates into rich-text layout coordinates.
+			mousePos.X = mousePos.X - textOrigin.X + _internalScrolling.X;
+			mousePos.Y = mousePos.Y - textOrigin.Y + _internalScrolling.Y;
 
 			// Clamp position to valid bounds
 			if (mousePos.X < 0)
@@ -1386,10 +1569,10 @@ namespace Myra.Graphics2D.UI
 			var line = _richTextLayout.GetLineByY(mousePos.Y);
 			if (line != null)
 			{
-				var glyphIndex = line.GetGlyphIndexByX(mousePos.X);
-				if (glyphIndex != null)
+				var cursorPosition = GetCursorPositionByTouch(line, mousePos.X);
+				if (cursorPosition != null)
 				{
-					UserSetCursorPosition(line.TextStartIndex + glyphIndex.Value);
+					UserSetCursorPosition(cursorPosition.Value);
 					// Extend selection if dragging or shift is held, otherwise reset selection
 					if (_isTouchDown || Desktop.IsShiftDown)
 					{
@@ -1403,21 +1586,82 @@ namespace Myra.Graphics2D.UI
 			}
 		}
 
+		private int? GetCursorPositionByTouch(TextLine line, int localX)
+		{
+			if (localX <= 0)
+			{
+				return line.TextStartIndex;
+			}
+
+			if (line.Count == 0 || localX >= line.Size.X)
+			{
+				return line.TextStartIndex + line.Count;
+			}
+
+			var glyphIndex = line.GetGlyphIndexByX(localX);
+			if (glyphIndex == null)
+			{
+				return null;
+			}
+
+			var textIndex = line.TextStartIndex + glyphIndex.Value;
+			var before = CaretContentX(textIndex);
+			var after = CaretContentX(textIndex + 1);
+			var midpoint = before + ((after - before) / 2);
+			return localX >= midpoint ? textIndex + 1 : textIndex;
+		}
+
+		private int CaretContentX(int textIndex)
+		{
+			return GetRenderPositionByIndex(textIndex).X - ActualBounds.X;
+		}
+
+		private Point TextOriginLocal()
+		{
+			var actualBounds = ActualBounds;
+			var textBounds = LayoutUtils.Align(new Point(actualBounds.Width, actualBounds.Height), _richTextLayout.Size, HorizontalAlignment.Left, TextVerticalAlignment);
+			return new Point(actualBounds.X - Bounds.X + textBounds.X, actualBounds.Y - Bounds.Y + textBounds.Y);
+		}
+
 		// Handles end of touch/drag operation
 		private void DesktopTouchUp(object sender, MyraEventArgs args)
 		{
 			_isTouchDown = false;
+			_ignoreTouchDownUntilTouchUp = false;
 		}
 
 		// Handles start of touch/drag operation
 		private void DesktopTouchDown(object sender, MyraEventArgs e)
 		{
+			if (_ignoreTouchDownUntilTouchUp)
+			{
+				return;
+			}
+
 			if (!Enabled || !IsTouchInside || Length == 0)
 			{
 				return;
 			}
 
 			SetCursorByTouch();
+			if (Desktop.TouchPosition is Point touchPosition && IsDoubleClickContinuation(touchPosition))
+			{
+				if (Multiline)
+				{
+					SelectLineAt(CursorPosition);
+				}
+				else
+				{
+					SelectAll();
+					UserSetCursorPosition(Length);
+				}
+
+				_lastDoubleClick = null;
+				_lastCursorUpdate = DateTime.Now;
+				_isTouchDown = false;
+				_ignoreTouchDownUntilTouchUp = true;
+				return;
+			}
 
 			_lastCursorUpdate = DateTime.Now;
 			_isTouchDown = true;
@@ -1430,63 +1674,15 @@ namespace Myra.Graphics2D.UI
 		public override void OnTouchDoubleClick()
 		{
 			base.OnTouchDoubleClick();
-
-			var position = CursorPosition;
-			if (string.IsNullOrEmpty(Text) || position < 0 || position >= Text.Length || Desktop.IsShiftDown)
+			if (Desktop?.TouchPosition is Point touchPosition)
 			{
-				return;
+				_lastDoubleClick = DateTime.Now;
+				_lastDoubleClickPosition = touchPosition;
 			}
 
-			// If cursor is on whitespace, move to adjacent non-whitespace
-			if (char.IsWhiteSpace(Text[position]))
-			{
-				if (position == 0)
-				{
-					return;
-				}
-
-				--position;
-				if (char.IsWhiteSpace(Text[position]))
-				{
-					return;
-				}
-			}
-
-			// Find word boundaries by scanning for whitespace in both directions
-			int start, end;
-			start = end = position;
-
-			// Find start of word (scan left until whitespace)
-			while (start > 0)
-			{
-				if (char.IsWhiteSpace(Text[start]))
-				{
-					++start;
-					break;
-				}
-
-				--start;
-			}
-
-			// Find end of word (scan right until whitespace)
-			while (end < Text.Length)
-			{
-				if (char.IsWhiteSpace(Text[end]))
-				{
-					break;
-				}
-
-				++end;
-			}
-
-			if (start == end)
-			{
-				return;
-			}
-
-			// Select the word
-			SelectStart = start;
-			SelectEnd = end;
+			SelectWordAt(CursorPosition);
+			_isTouchDown = false;
+			_ignoreTouchDownUntilTouchUp = true;
 		}
 
 		/// <summary>

@@ -46,6 +46,7 @@ namespace Myra.Graphics2D.UI
 		private bool _layoutDirty = true;  // Flag: layout needs recalculation on next update
 		private bool _widgetsDirty = true;  // Flag: widget list needs re-sorting by Z-index
 		private Widget _focusedKeyboardWidget;  // Widget currently receiving keyboard input
+		private bool _suppressNextCharInput;
 		private readonly List<Widget> _widgetsCopy = new List<Widget>();  // Sorted copy of Widgets for iteration (avoids modifications during enumeration)
 		private Widget _previousKeyboardFocus;  // Widget to restore focus to after context menu closes
 
@@ -193,6 +194,11 @@ namespace Myra.Graphics2D.UI
 			}
 		}
 
+		public void SuppressNextCharInput()
+		{
+			_suppressNextCharInput = true;
+		}
+
 		/// <summary>
 		/// Gets or sets the opacity of the desktop (0.0 to 1.0).
 		/// </summary>
@@ -303,6 +309,22 @@ namespace Myra.Graphics2D.UI
 #else
 				return IsKeyDown(Keys.LeftCtrl) || IsKeyDown(Keys.RightCtrl);
 #endif
+			}
+		}
+
+		internal bool IsCommandDown
+		{
+			get
+			{
+				return IsKeyDown(Keys.LeftWindows) || IsKeyDown(Keys.RightWindows);
+			}
+		}
+
+		internal bool IsShortcutDown
+		{
+			get
+			{
+				return IsControlDown || IsCommandDown;
 			}
 		}
 
@@ -1020,6 +1042,12 @@ namespace Myra.Graphics2D.UI
 		/// <param name="c">The character that was input.</param>
 		public void OnChar(char c)
 		{
+			if (_suppressNextCharInput)
+			{
+				_suppressNextCharInput = false;
+				return;
+			}
+
 			// Don't accept text input if menu bar is open
 			if (IsMenuBarActive)
 			{

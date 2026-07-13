@@ -194,6 +194,9 @@ namespace Myra.Graphics2D.UI
 			}
 		}
 
+		/// <summary>
+		/// Suppresses the next character input event.
+		/// </summary>
 		public void SuppressNextCharInput()
 		{
 			_suppressNextCharInput = true;
